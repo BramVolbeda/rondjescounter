@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Rondje! · De turflijst van het weekend</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Staatliches&family=Karla:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: #241811;
+    background-image: radial-gradient(ellipse at 50% -10%, #3a2617 0%, #241811 60%);
+    color: #F3E9D2; font-family: 'Karla', system-ui, sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 0 16px 48px;
+  }
+  .wrap { width: 100%; max-width: 440px; }
+  .header { text-align: center; padding: 28px 0 6px; }
+  .title { font-family: 'Staatliches', 'Karla', sans-serif; font-size: 42px; letter-spacing: 3px;
+    color: #EDAE49; margin: 0; text-shadow: 0 2px 0 rgba(0,0,0,.4); }
+  .sub { color: #C7B08A; font-size: 14px; margin: 2px 0 0; }
+  .flash { background: #EDAE49; color: #241811; font-weight: 700; border-radius: 10px;
+    padding: 10px 14px; text-align: center; margin: 12px 0 0; animation: pop .25s ease; }
+  @keyframes pop { from { transform: scale(.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .flash { animation: none; } }
+  .card { background: #2F2014; border: 1px solid #4A3421; border-radius: 16px;
+    padding: 20px; margin-top: 18px; box-shadow: 0 4px 16px rgba(0,0,0,.35); }
+  .beurt { background: linear-gradient(135deg, #47311D, #2F2014); border: 1px solid #EDAE49;
+    border-radius: 16px; padding: 14px 18px; margin-top: 18px; display: flex; align-items: center; gap: 12px; }
+  .beurt-emoji { font-size: 28px; }
+  .beurt-name { font-family: 'Staatliches', sans-serif; font-size: 24px; color: #EDAE49; letter-spacing: 1px; line-height: 1.1; }
+  .beurt-sub { color: #C7B08A; font-size: 12px; }
+  .bigbtn { width: 100%; border: none; border-radius: 14px; cursor: pointer;
+    font-family: 'Staatliches', sans-serif; letter-spacing: 2px; font-size: 26px; padding: 22px 16px;
+    color: #241811; background: linear-gradient(180deg, #F2BE5C 0%, #E09F35 100%);
+    box-shadow: 0 5px 0 #8C5E1A, 0 8px 18px rgba(0,0,0,.4);
+    transition: transform .08s ease, box-shadow .08s ease; }
+  .bigbtn:active { transform: translateY(3px); box-shadow: 0 2px 0 #8C5E1A; }
+  .bigbtn:disabled { opacity: .55; cursor: default; }
+  .secbtn { width: 100%; margin-top: 12px; border-radius: 12px; cursor: pointer;
+    border: 1px solid #6b4f2e; background: transparent; color: #E5CFA3;
+    font-family: 'Karla', sans-serif; font-weight: 700; font-size: 15px; padding: 12px; }
+  .label { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: #A98C5F; font-weight: 700; }
+  .live { display: flex; align-items: center; gap: 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #7FB069; box-shadow: 0 0 8px #7FB069; }
+  .buyername { font-family: 'Staatliches', sans-serif; font-size: 30px; color: #EDAE49; letter-spacing: 1px; margin: 6px 0 2px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .chip { background: #47311D; border: 1px solid #5f4527; border-radius: 999px;
+    padding: 5px 12px; font-size: 14px; font-weight: 700; }
+  .chip small { font-weight: 400; color: #C7B08A; }
+  .chip.me { background: #5E8C4A; border-color: #5E8C4A; color: #F3E9D2; }
+  .chip.me small { color: #DCE8D2; }
+  .drinksList { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .drinkbtn { display: flex; justify-content: space-between; align-items: center;
+    border-radius: 12px; border: 1px solid #6b4f2e; background: #241811; color: #F3E9D2;
+    padding: 13px 16px; font-family: 'Karla', sans-serif; font-weight: 700; font-size: 16px;
+    cursor: pointer; transition: border-color .1s ease; width: 100%; }
+  .drinkbtn:active { border-color: #EDAE49; }
+  .drinkbtn.sel { border-color: #7FB069; background: #2c3a22; }
+  .drinkbtn .p { color: #EDAE49; font-family: 'Staatliches', sans-serif; letter-spacing: 1px; }
+  .tablerow { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-bottom: 1px dashed #4A3421; }
+  .tablerow:last-child { border-bottom: none; }
+  .rank { width: 22px; font-family: 'Staatliches', sans-serif; font-size: 18px; color: #A98C5F; }
+  .pname { flex: 1; font-weight: 700; font-size: 16px; }
+  .pname small { display: block; font-weight: 400; color: #A98C5F; font-size: 12px; }
+  .saldo { font-size: 13px; font-weight: 700; min-width: 64px; text-align: right; }
+  .saldo.pos { color: #7FB069; } .saldo.neg { color: #D06A45; }
+  .turf { color: #EDAE49; display: inline-flex; gap: 6px; align-items: center; }
+  .turf-zero { color: #6b4f2e; }
+  .totals { display: flex; gap: 12px; margin-top: 18px; }
+  .total { flex: 1; background: #2F2014; border: 1px solid #4A3421; border-radius: 14px; padding: 14px 8px; text-align: center; }
+  .totalnum { font-family: 'Staatliches', sans-serif; font-size: 30px; color: #EDAE49; line-height: 1; }
+  .totalnum.small { font-size: 22px; padding-top: 5px; }
+  .input { width: 100%; border-radius: 12px; border: 1px solid #6b4f2e;
+    background: #241811; color: #F3E9D2; padding: 14px; font-size: 17px; font-family: 'Karla', sans-serif;
+    margin-bottom: 14px; outline: none; }
+  .input:focus { border-color: #EDAE49; }
+  textarea.input { min-height: 150px; font-size: 13px; font-family: ui-monospace, monospace; }
+  .note { color: #A98C5F; font-size: 12px; text-align: center; margin-top: 20px; line-height: 1.5; }
+  .hist { font-size: 14px; color: #C7B08A; padding: 8px 0; border-bottom: 1px dashed #4A3421; }
+  .hist:last-child { border-bottom: none; }
+  .manage-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px dashed #4A3421; }
+  .manage-row:last-of-type { border-bottom: none; }
+  .xbtn { border: none; background: transparent; color: #D06A45; font-size: 18px; cursor: pointer; padding: 4px 8px; }
+  .addrow { display: flex; gap: 8px; margin-top: 12px; }
+  .addrow .input { margin-bottom: 0; }
+  .addrow .prijs { max-width: 92px; }
+  .setup ol { padding-left: 20px; line-height: 1.7; font-size: 14px; color: #E5CFA3; margin: 10px 0; }
+  .setup code { background: #241811; border-radius: 6px; padding: 2px 6px; font-size: 13px; color: #EDAE49; }
+  .err { color: #D06A45; font-size: 13px; font-weight: 700; margin: 10px 0 0; }
+  button:focus-visible, .input:focus-visible { outline: 2px solid #EDAE49; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap" id="root"><p style="text-align:center;padding-top:80px">Kroeg openen…</p></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getDatabase, ref, onValue, set, get, remove, push, runTransaction
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+// ---------- helpers ----------
+const root = document.getElementById("root");
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const euro = (n) => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(n || 0);
+const timeStr = (ts) => new Date(ts).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+const nameKey = (name) => name.replace(/[.#$\[\]\/\s]/g, "_");
+
+const DEFAULT_DRINKS = {
+  klein: { name: "Klein biertje", price: 3.2 },
+  groot: { name: "Groot biertje", price: 5.5 },
+};
+
+// ---------- config: uit URL, lokale opslag, of eenmalig plakken ----------
+function parseConfigText(txt) {
+  const m = String(txt).match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try { return new Function("return " + m[0])(); } catch { return null; }
+}
+const encodeCfg = (cfg) =>
+  btoa(unescape(encodeURIComponent(JSON.stringify(cfg))))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const decodeCfg = (s) => {
+  try {
+    return JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g, "+").replace(/_/g, "/")))));
+  } catch { return null; }
+};
+function getStoredConfig() {
+  const h = new URLSearchParams(location.hash.slice(1)).get("cfg");
+  if (h) {
+    const c = decodeCfg(h);
+    if (c && c.apiKey && c.databaseURL) {
+      localStorage.setItem("rondje-config", JSON.stringify(c));
+      return c;
+    }
+  }
+  try {
+    const c = JSON.parse(localStorage.getItem("rondje-config") || "null");
+    if (c && c.apiKey && c.databaseURL) return c;
+  } catch { /* geen geldige opgeslagen config */ }
+  return null;
+}
+const shareUrl = (cfg) => `${location.origin}${location.pathname}#cfg=${encodeCfg(cfg)}`;
+
+async function copyText(txt) {
+  try {
+    await navigator.clipboard.writeText(txt);
+    return true;
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch { ok = false; }
+    ta.remove();
+    return ok;
+  }
+}
+
+// ---------- setup-scherm ----------
+function renderSetup(error) {
+  root.innerHTML = `
+    <header class="header"><h1 class="title">RONDJE!</h1><p class="sub">Eenmalige setup</p></header>
+    <div class="card setup">
+      <p class="label">Verbind je database</p>
+      <ol>
+        <li>Ga naar <code>console.firebase.google.com</code>, maak een project</li>
+        <li><b>Build → Realtime Database → Create database</b> (test mode)</li>
+        <li><b>Project settings → Your apps → Web</b> <code>&lt;/&gt;</code> → kopieer de <code>firebaseConfig</code></li>
+        <li>Plak hem hieronder</li>
+      </ol>
+      <textarea id="inp-config" class="input" placeholder="Plak hier je firebaseConfig…"></textarea>
+      <input id="inp-dburl" class="input" placeholder="databaseURL (alleen als die niet in de config staat)" />
+      <button class="bigbtn" data-action="connect">Verbinden</button>
+      ${error ? `<p class="err">${esc(error)}</p>` : ""}
+      <p style="color:#A98C5F;font-size:12px;margin:12px 0 0">
+        Na het verbinden krijg je een deel-link waar de configuratie al in zit — je vrienden hoeven dus niets in te stellen.
+      </p>
+    </div>`;
+}
+
+function handleConnect() {
+  const cfgTxt = (document.getElementById("inp-config") || {}).value || "";
+  const dbUrl = ((document.getElementById("inp-dburl") || {}).value || "").trim();
+  const cfg = parseConfigText(cfgTxt);
+  if (!cfg || !cfg.apiKey) {
+    renderSetup("Dat lijkt geen geldige firebaseConfig. Kopieer het hele blok, inclusief de accolades { }.");
+    return;
+  }
+  if (!cfg.databaseURL && dbUrl) cfg.databaseURL = dbUrl;
+  if (!cfg.databaseURL) {
+    renderSetup("De databaseURL ontbreekt. Kopieer de URL uit het Realtime Database-scherm (https://…firebasedatabase.app) en plak hem in het tweede veld.");
+    return;
+  }
+  localStorage.setItem("rondje-config", JSON.stringify(cfg));
+  history.replaceState(null, "", shareUrl(cfg));
+  initApp(cfg);
+}
+
+// ---------- app ----------
+const S = {
+  myName: localStorage.getItem("rondje-naam") || "",
+  members: [], drinks: [], activeRound: null, joins: [], history: [],
+  pickingOwn: false, showManage: false, confirmReset: false,
+  flash: null, ready: false, shareUrl: "",
+};
+let db = null;
+const R = (p) => ref(db, p);
+let flashTimer = null;
+const showFlash = (msg) => {
+  S.flash = msg; render();
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { S.flash = null; render(); }, 3500);
+};
+const drinkById = (id) => S.drinks.find((d) => d.id === id);
+
+function initApp(cfg) {
+  const app = initializeApp(cfg);
+  db = getDatabase(app);
+  S.shareUrl = shareUrl(cfg);
+
+  let joinsUnsub = null;
+  let watchedRoundId = null;
+
+  onValue(R("drinks"), (snap) => {
+    const v = snap.val();
+    if (!v) { runTransaction(R("drinks"), (cur) => cur || DEFAULT_DRINKS); return; }
+    S.drinks = Object.entries(v).map(([id, d]) => ({ id, ...d }));
+    render();
+  }, () => showFlash("Geen verbinding met de database — check je config en database-rules"));
+
+  onValue(R("members"), (snap) => {
+    const v = snap.val() || {};
+    S.members = Object.values(v).map((m) => m.name).sort((a, b) => a.localeCompare(b));
+    render();
+  });
+
+  onValue(R("history"), (snap) => {
+    const v = snap.val() || {};
+    S.history = Object.entries(v)
+      .map(([id, r]) => ({ id, ...r, items: r.items ? Object.values(r.items) : [] }))
+      .sort((a, b) => a.closedAt - b.closedAt);
+    render();
+  });
+
+  onValue(R("activeRound"), (snap) => {
+    S.activeRound = snap.val() || null;
+    const rid = S.activeRound ? S.activeRound.id : null;
+    if (rid !== watchedRoundId) {
+      if (joinsUnsub) { joinsUnsub(); joinsUnsub = null; }
+      watchedRoundId = rid;
+      S.joins = [];
+      if (rid) {
+        joinsUnsub = onValue(R(`joins/${rid}`), (js) => {
+          S.joins = Object.values(js.val() || {});
+          render();
+        });
+      }
+    }
+    S.ready = true;
+    render();
+  });
+}
+
+// ---------- actions ----------
+async function register() {
+  const inp = document.getElementById("inp-naam");
+  const name = (inp ? inp.value : "").trim().slice(0, 24);
+  if (!name) return;
+  try {
+    await set(R(`members/${nameKey(name)}`), { name, joinedAt: Date.now() });
+    localStorage.setItem("rondje-naam", name);
+    S.myName = name;
+    render();
+  } catch { showFlash("Aanmelden mislukt, probeer opnieuw"); }
+}
+
+async function startRound(drinkId) {
+  try {
+    const round = { id: Date.now(), buyer: S.myName, startedAt: Date.now() };
+    const res = await runTransaction(R("activeRound"), (cur) => (cur ? undefined : round));
+    if (!res.committed) {
+      const cur = res.snapshot.val();
+      showFlash(cur ? `${cur.buyer} is al onderweg naar de bar!` : "Er loopt al een rondje");
+    } else {
+      await set(R(`joins/${round.id}/${nameKey(S.myName)}`), { name: S.myName, drinkId });
+    }
+    S.pickingOwn = false;
+    render();
+  } catch { showFlash("Rondje starten mislukt, probeer opnieuw"); }
+}
+
+async function joinRound(drinkId) {
+  if (!S.activeRound) return;
+  try {
+    await set(R(`joins/${S.activeRound.id}/${nameKey(S.myName)}`), { name: S.myName, drinkId });
+  } catch { showFlash("Meedoen mislukt, probeer opnieuw"); }
+}
+
+async function closeRound() {
+  if (!S.activeRound) return;
+  try {
+    const rid = S.activeRound.id;
+    const snap = await get(R(`joins/${rid}`));
+    const joins = Object.values(snap.val() || {});
+    const items = joins.map((j) => {
+      const d = drinkById(j.drinkId);
+      return { name: j.name, drinkName: d ? d.name : "?", price: d ? d.price : 0 };
+    });
+    await push(R("history"), {
+      buyer: S.activeRound.buyer, items,
+      startedAt: S.activeRound.startedAt, closedAt: Date.now(),
+    });
+    await remove(R("activeRound"));
+    await remove(R(`joins/${rid}`));
+    showFlash("Proost! 🍻");
+  } catch { showFlash("Afronden mislukt, probeer opnieuw"); }
+}
+
+async function addDrink() {
+  const nameEl = document.getElementById("inp-drinkname");
+  const priceEl = document.getElementById("inp-drinkprice");
+  const name = (nameEl ? nameEl.value : "").trim().slice(0, 24);
+  const price = parseFloat(String(priceEl ? priceEl.value : "").replace(",", "."));
+  if (!name || isNaN(price) || price < 0) { showFlash("Vul een naam en geldige prijs in"); return; }
+  try {
+    await set(R(`drinks/c${Date.now()}`), { name, price: Math.round(price * 100) / 100 });
+    showFlash(`${name} staat op de kaart`);
+  } catch { showFlash("Toevoegen mislukt"); }
+}
+
+async function removeDrink(id) {
+  if (S.drinks.length <= 1) { showFlash("Minstens één drankje moet blijven staan"); return; }
+  try { await remove(R(`drinks/${id}`)); } catch { showFlash("Verwijderen mislukt"); }
+}
+
+async function resetWeekend() {
+  try {
+    await remove(R("history"));
+    await remove(R("activeRound"));
+    await remove(R("joins"));
+    S.confirmReset = false;
+    showFlash("Schone lei. Nieuw weekend!");
+  } catch { showFlash("Reset mislukt"); }
+}
+
+async function shareLink() {
+  const ok = await copyText(S.shareUrl);
+  showFlash(ok ? "Deel-link gekopieerd — plak hem in de groepsapp!" : "Kopiëren lukte niet, kopieer de URL uit de adresbalk");
+}
+
+// ---------- stats ----------
+function computeStats() {
+  const stats = {};
+  const ensure = (n) => (stats[n] ||= { gehaald: 0, gedronken: 0, uitgegeven: 0, gekregen: 0 });
+  S.members.forEach(ensure);
+  S.history.forEach((r) => {
+    const cost = r.items.reduce((a, it) => a + (it.price || 0), 0);
+    ensure(r.buyer).gehaald += 1;
+    ensure(r.buyer).uitgegeven += cost;
+    r.items.forEach((it) => {
+      ensure(it.name).gedronken += 1;
+      ensure(it.name).gekregen += it.price || 0;
+    });
+  });
+  return Object.entries(stats)
+    .map(([name, s]) => ({ name, ...s, saldo: s.uitgegeven - s.gekregen }))
+    .sort((a, b) => b.gehaald - a.gehaald || b.saldo - a.saldo || a.name.localeCompare(b.name));
+}
+
+// ---------- rendering ----------
+function turfSvg(count) {
+  if (count === 0) return `<span class="turf-zero">—</span>`;
+  let html = `<span class="turf">`;
+  let left = count;
+  while (left > 0) {
+    const g = Math.min(left, 5); left -= 5;
+    const w = g === 5 ? 34 : g * 7 + 6;
+    html += `<svg width="${w}" height="26" viewBox="0 0 ${w} 26">`;
+    for (let j = 0; j < Math.min(g, 4); j++) {
+      html += `<line x1="${5 + j * 7}" y1="3" x2="${4 + j * 7}" y2="23" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>`;
+    }
+    if (g === 5) html += `<line x1="0" y1="20" x2="32" y2="5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>`;
+    html += `</svg>`;
+  }
+  return html + `</span>`;
+}
+
+function drinkPicker(action, selectedId) {
+  return `<div class="drinksList">` + S.drinks.map((d) => `
+    <button class="drinkbtn${selectedId === d.id ? " sel" : ""}" data-action="${action}" data-id="${esc(d.id)}">
+      <span>${selectedId === d.id ? "✓ " : ""}${esc(d.name)}</span>
+      <span class="p">${euro(d.price)}</span>
+    </button>`).join("") + `</div>`;
+}
+
+function render() {
+  if (!S.ready) return;
+
+  const keep = {};
+  ["inp-naam", "inp-drinkname", "inp-drinkprice"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) keep[id] = { value: el.value, focus: document.activeElement === el, pos: el.selectionStart };
+  });
+
+  const header = `
+    <header class="header">
+      <h1 class="title">RONDJE!</h1>
+      <p class="sub">${S.myName ? `Ingeklokt als <b style="color:#EDAE49">${esc(S.myName)}</b>` : "De turflijst van het weekend"}</p>
+    </header>
+    ${S.flash ? `<div class="flash">${esc(S.flash)}</div>` : ""}`;
+
+  const shareBtn = `<button class="secbtn" data-action="share">🔗 Deel-link kopiëren voor je vrienden</button>`;
+
+  if (!S.myName) {
+    root.innerHTML = header + `
+      <div class="card">
+        <p class="label">Wie ben je?</p>
+        <p style="margin:8px 0 14px;color:#C7B08A;font-size:14px">Vul je naam in zodat de rest weet wie er meedrinkt — en wie er haalt.</p>
+        <input id="inp-naam" class="input" maxlength="24" placeholder="Je naam of bijnaam" />
+        <button class="bigbtn" data-action="register">De kroeg in</button>
+      </div>
+      ${shareBtn}
+      <p class="note">Iedereen met de deel-link ziet dezelfde turflijst.<br/>Je naam, drankjes en saldo zijn zichtbaar voor de hele groep.</p>`;
+    restore(keep);
+    return;
+  }
+
+  const board = computeStats();
+  const totaalRondjes = S.history.length;
+  const totaalDrankjes = S.history.reduce((a, r) => a + r.items.length, 0);
+  const totaalEuro = S.history.reduce((a, r) => a + r.items.reduce((x, it) => x + (it.price || 0), 0), 0);
+  const beurt = totaalRondjes > 0 && board.length > 1
+    ? [...board].sort((a, b) => a.saldo - b.saldo || a.gehaald - b.gehaald || b.gedronken - a.gedronken)[0]
+    : null;
+
+  const iAmBuyer = S.activeRound && S.activeRound.buyer === S.myName;
+  const myJoin = S.joins.find((j) => j.name === S.myName);
+  const roundStale = S.activeRound && Date.now() - S.activeRound.startedAt > 20 * 60 * 1000;
+  const activeTotal = S.joins.reduce((a, j) => a + ((drinkById(j.drinkId) || {}).price || 0), 0);
+
+  let actie = "";
+  if (!S.activeRound && !S.pickingOwn) {
+    actie = `
+      <button class="bigbtn" data-action="pickOwn">🍺 Ik haal een rondje</button>
+      <p style="text-align:center;color:#A98C5F;font-size:13px;margin:12px 0 0">Druk hierop als jij naar de bar loopt. De rest kan dan meedoen.</p>`;
+  } else if (!S.activeRound && S.pickingOwn) {
+    actie = `
+      <p class="label">Wat drink je zelf?</p>
+      ${drinkPicker("start")}
+      <button class="secbtn" data-action="cancelPick">Toch niet</button>`;
+  } else if (S.activeRound) {
+    actie = `
+      <div class="live"><span class="dot"></span>
+        <span class="label">Rondje onderweg · gestart om ${timeStr(S.activeRound.startedAt)}</span></div>
+      <p class="buyername">${iAmBuyer ? "Jij haalt!" : esc(S.activeRound.buyer) + " haalt!"}</p>
+      <div class="chips">
+        ${S.joins.map((j) => {
+          const d = drinkById(j.drinkId);
+          return `<span class="chip${j.name === S.myName ? " me" : ""}">${j.name === S.activeRound.buyer ? "🍺 " : ""}${esc(j.name)} <small>· ${d ? esc(d.name) : "?"}</small></span>`;
+        }).join("")}
+      </div>
+      ${!iAmBuyer ? `
+        <p class="label" style="margin-top:16px">${myJoin ? "Jouw bestelling (tik om te wisselen)" : "Wat wil jij?"}</p>
+        ${drinkPicker("join", myJoin ? myJoin.drinkId : null)}
+        ${myJoin ? `<p style="text-align:center;color:#7FB069;font-weight:700;margin:12px 0 0">Je staat op de lijst — hij komt eraan 🍻</p>` : ""}` : ""}
+      ${(iAmBuyer || roundStale) ? `
+        <button class="bigbtn" style="margin-top:16px" data-action="close">✅ Rondje binnen · ${euro(activeTotal)}</button>
+        ${iAmBuyer ? `<p style="text-align:center;color:#A98C5F;font-size:12px;margin:10px 0 0">Druk hierop zodra iedereen z'n drankje heeft doorgegeven.</p>` : ""}` : ""}`;
+  }
+
+  root.innerHTML = header + `
+    ${beurt && !S.activeRound ? `
+      <div class="beurt"><span class="beurt-emoji">🫵</span><div>
+        <div class="beurt-name">${beurt.name === S.myName ? "Jij bent aan de beurt!" : esc(beurt.name) + " is aan de beurt"}</div>
+        <div class="beurt-sub">Saldo ${euro(beurt.saldo)} · ${beurt.gehaald}x gehaald, ${beurt.gedronken} drankjes op</div>
+      </div></div>` : ""}
+
+    <div class="card">${actie}</div>
+
+    <div class="totals">
+      <div class="total"><div class="totalnum">${totaalRondjes}</div><div class="label">Rondjes</div></div>
+      <div class="total"><div class="totalnum">${totaalDrankjes}</div><div class="label">Drankjes</div></div>
+      <div class="total"><div class="totalnum small">${euro(totaalEuro)}</div><div class="label">Omzet</div></div>
+    </div>
+
+    <div class="card">
+      <p class="label" style="margin:0 0 4px">De turflijst · rondjes gehaald</p>
+      ${board.length === 0 ? `<p style="color:#A98C5F;font-size:14px">Nog niemand aangemeld. Deel de link met je groep!</p>` : ""}
+      ${board.map((p, i) => `
+        <div class="tablerow">
+          <span class="rank">${i + 1}</span>
+          <span class="pname">${esc(p.name)}<small>${p.gedronken} drankjes · ${euro(p.uitgegeven)} uitgegeven</small></span>
+          ${turfSvg(p.gehaald)}
+          <span class="saldo ${p.saldo >= 0 ? "pos" : "neg"}">${p.saldo >= 0 ? "+" : ""}${euro(p.saldo)}</span>
+        </div>`).join("")}
+      ${board.length > 0 ? `<p style="color:#A98C5F;font-size:12px;margin:12px 0 0">Saldo = uitgegeven aan rondjes − waarde van je eigen drankjes. In de min? Dan ben jij binnenkort aan de beurt.</p>` : ""}
+    </div>
+
+    <button class="secbtn" data-action="toggleManage">${S.showManage ? "Drankjeskaart sluiten" : "🍹 Drankjeskaart &amp; prijzen"}</button>
+    ${S.showManage ? `
+      <div class="card" style="margin-top:12px">
+        <p class="label" style="margin:0 0 6px">Op de kaart</p>
+        ${S.drinks.map((d) => `
+          <div class="manage-row">
+            <span style="flex:1;font-weight:700">${esc(d.name)}</span>
+            <span style="color:#EDAE49;font-weight:700">${euro(d.price)}</span>
+            <button class="xbtn" data-action="removeDrink" data-id="${esc(d.id)}" aria-label="Verwijder ${esc(d.name)}">✕</button>
+          </div>`).join("")}
+        <p class="label" style="margin:16px 0 6px">Nieuwe categorie</p>
+        <div class="addrow">
+          <input id="inp-drinkname" class="input" maxlength="24" placeholder="Bijv. Shotje tequila" />
+          <input id="inp-drinkprice" class="input prijs" inputmode="decimal" placeholder="€" />
+        </div>
+        <button class="secbtn" data-action="addDrink">Toevoegen aan de kaart</button>
+        <p style="color:#A98C5F;font-size:12px;margin:10px 0 0">Prijswijzigingen gelden voor nieuwe rondjes; oude rondjes houden hun prijs.</p>
+      </div>` : ""}
+
+    ${S.history.length > 0 ? `
+      <div class="card">
+        <p class="label" style="margin:0 0 6px">Laatste rondjes</p>
+        ${[...S.history].reverse().slice(0, 8).map((r) => {
+          const cost = r.items.reduce((a, it) => a + (it.price || 0), 0);
+          return `<div class="hist"><b style="color:#F3E9D2">${esc(r.buyer)}</b> haalde er ${r.items.length} om ${timeStr(r.closedAt)}${cost > 0 ? " · " + euro(cost) : ""}</div>`;
+        }).join("")}
+      </div>` : ""}
+
+    ${shareBtn}
+
+    ${!S.confirmReset ? `
+      <button class="secbtn" data-action="askReset">Nieuw weekend starten (alles wissen)</button>` : `
+      <div class="card" style="text-align:center">
+        <p style="margin-top:0">Zeker weten? De hele turflijst gaat op nul.</p>
+        <button class="bigbtn" data-action="reset">Ja, wis alles</button>
+        <button class="secbtn" data-action="cancelReset">Toch niet</button>
+      </div>`}
+
+    <p class="note">Iedereen met de deel-link ziet de turflijst en doet mee onder eigen naam.<br/>Updates verschijnen live bij de hele groep.</p>`;
+
+  restore(keep);
+}
+
+function restore(keep) {
+  Object.entries(keep).forEach(([id, k]) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.value = k.value;
+      if (k.focus) { el.focus(); try { el.setSelectionRange(k.pos, k.pos); } catch {} }
+    }
+  });
+}
+
+// ---------- events ----------
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-action]");
+  if (!btn) return;
+  const a = btn.dataset.action;
+  if (a === "connect") handleConnect();
+  else if (a === "register") register();
+  else if (a === "pickOwn") { S.pickingOwn = true; render(); }
+  else if (a === "cancelPick") { S.pickingOwn = false; render(); }
+  else if (a === "start") startRound(btn.dataset.id);
+  else if (a === "join") joinRound(btn.dataset.id);
+  else if (a === "close") closeRound();
+  else if (a === "toggleManage") { S.showManage = !S.showManage; render(); }
+  else if (a === "addDrink") addDrink();
+  else if (a === "removeDrink") removeDrink(btn.dataset.id);
+  else if (a === "askReset") { S.confirmReset = true; render(); }
+  else if (a === "cancelReset") { S.confirmReset = false; render(); }
+  else if (a === "reset") resetWeekend();
+  else if (a === "share") shareLink();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.id === "inp-naam") register();
+});
+
+// ---------- start ----------
+const cfg = getStoredConfig();
+if (cfg) initApp(cfg);
+else renderSetup();
+</script>
+</body>
+</html>
