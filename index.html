@@ -8,14 +8,14 @@
 <link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&family=Bebas+Neue&family=Aleo:wght@400;700&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --indigo: #3B3070;      /* secundair donkerblauw */
-    --indigo-deep: #2A2254; /* achtergrond */
-    --purple: #7B2D8B;      /* primair paars */
-    --magenta: #E5097F;     /* primair magenta */
-    --pink: #F6CFD4;        /* primair zachtroze */
-    --orange: #F4A259;      /* secundair oranje */
-    --cyan: #6FC9DB;        /* secundair cyaan */
-    --violet: #B5199B;      /* secundair magenta-paars */
+    --indigo: #3B3070;
+    --indigo-deep: #2A2254;
+    --purple: #7B2D8B;
+    --magenta: #E5097F;
+    --pink: #F6CFD4;
+    --orange: #F4A259;
+    --cyan: #6FC9DB;
+    --violet: #B5199B;
     --card: #453A85;
     --card-border: #5C4FA5;
     --text: #F9EDF1;
@@ -96,6 +96,12 @@
   .drinkbtn:active { border-color: var(--orange); }
   .drinkbtn.sel { border-color: var(--cyan); background: #2E5468; }
   .drinkbtn .p { color: var(--orange); font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; font-size: 18px; }
+  .bestel { background: var(--indigo-deep); border: 1px dashed var(--cyan); border-radius: 12px;
+    padding: 12px 14px; margin-top: 14px; }
+  .bestel-title { font-family: 'Bebas Neue', sans-serif; letter-spacing: 2px; color: var(--cyan);
+    font-size: 14px; margin: 0 0 6px; }
+  .bestel-line { display: flex; justify-content: space-between; font-size: 15px; padding: 3px 0; }
+  .bestel-line .aantal { font-family: 'Bebas Neue', sans-serif; color: var(--orange); font-size: 17px; letter-spacing: 1px; }
   .tablerow { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-bottom: 1px dashed var(--card-border); }
   .tablerow:last-child { border-bottom: none; }
   .rank { width: 22px; font-family: 'Bebas Neue', sans-serif; font-size: 20px; color: var(--violet); }
@@ -111,6 +117,8 @@
   .totalnum { font-family: 'Bebas Neue', sans-serif; font-size: 32px; letter-spacing: 1px;
     color: var(--pink); line-height: 1; }
   .totalnum.small { font-size: 22px; padding-top: 6px; }
+  .weekendmix { text-align: center; color: var(--muted); font-size: 12px; margin: 10px 4px 0; line-height: 1.6; }
+  .weekendmix b { color: var(--orange); font-family: 'Bebas Neue', sans-serif; font-size: 14px; letter-spacing: 1px; }
   .input { width: 100%; border-radius: 12px; border: 1px solid var(--card-border);
     background: var(--indigo-deep); color: var(--text); padding: 14px; font-size: 17px;
     font-family: 'Aleo', serif; margin-bottom: 14px; outline: none; }
@@ -129,6 +137,17 @@
   .setup ol { padding-left: 20px; line-height: 1.7; font-size: 14px; color: var(--pink); margin: 10px 0; }
   .setup code { background: var(--indigo-deep); border-radius: 6px; padding: 2px 6px; font-size: 13px; color: var(--orange); }
   .err { color: var(--orange); font-size: 13px; font-weight: 700; margin: 10px 0 0; }
+  .overlay { position: fixed; inset: 0; background: rgba(20,14,50,.8); display: flex;
+    align-items: center; justify-content: center; padding: 20px; z-index: 50; }
+  .modal { background: var(--card); border: 1px solid var(--magenta); border-radius: 20px;
+    padding: 24px; max-width: 400px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,.55);
+    animation: pop .25s ease; max-height: 85vh; overflow-y: auto; }
+  .modal h2 { font-family: 'Kaushan Script', cursive; font-weight: 400; font-size: 32px; margin: 0 0 4px;
+    background: linear-gradient(90deg, var(--magenta), var(--orange));
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .modal ul { padding-left: 4px; list-style: none; margin: 14px 0; }
+  .modal li { padding: 7px 0; font-size: 15px; line-height: 1.45; }
+  .modal li .em { color: var(--orange); }
   button:focus-visible, .input:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 </style>
 </head>
@@ -140,6 +159,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getDatabase, ref, onValue, set, get, remove, push, runTransaction
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const APP_VERSION = 2;
 
 // ---------- helpers ----------
 const root = document.getElementById("root");
@@ -153,6 +174,18 @@ const DEFAULT_DRINKS = {
   klein: { name: "Klein biertje", price: 3.2 },
   groot: { name: "Groot biertje", price: 5.5 },
 };
+
+// telling per dranksoort: [{drinkName, count, sum}]
+function tallyDrinks(items) {
+  const map = {};
+  items.forEach((it) => {
+    const key = it.drinkName || "?";
+    map[key] ||= { drinkName: key, count: 0, sum: 0 };
+    map[key].count += 1;
+    map[key].sum += it.price || 0;
+  });
+  return Object.values(map).sort((a, b) => b.count - a.count);
+}
 
 // ---------- config: uit URL, lokale opslag, of eenmalig plakken ----------
 function parseConfigText(txt) {
@@ -200,6 +233,61 @@ async function copyText(txt) {
   }
 }
 
+// ---------- meldingen & geluid ----------
+let audioCtx = null;
+function ensureAudio() {
+  try {
+    audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+  } catch { /* geen audio beschikbaar */ }
+}
+function playChime() {
+  try {
+    ensureAudio();
+    if (!audioCtx) return;
+    const notes = [[659.25, 0], [880, 0.14], [1046.5, 0.28]];
+    notes.forEach(([freq, delay]) => {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = "triangle"; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, audioCtx.currentTime + delay);
+      g.gain.exponentialRampToValueAtTime(0.35, audioCtx.currentTime + delay + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + delay + 0.5);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(audioCtx.currentTime + delay);
+      o.stop(audioCtx.currentTime + delay + 0.55);
+    });
+  } catch { /* geluid is nice-to-have */ }
+}
+async function notifyRound(buyer) {
+  playChime();
+  try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch {}
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const opts = {
+    body: `${buyer} haalt een rondje — geef je bestelling door! 🍺`,
+    tag: "rondje", renotify: true, vibrate: [200, 100, 200],
+  };
+  try {
+    const reg = navigator.serviceWorker ? await navigator.serviceWorker.getRegistration() : null;
+    if (reg && reg.showNotification) reg.showNotification("Rondje! ✦ Villa Escalatopia", opts);
+    else new Notification("Rondje! ✦ Villa Escalatopia", opts);
+  } catch {
+    try { new Notification("Rondje! ✦ Villa Escalatopia", opts); } catch { /* niet ondersteund */ }
+  }
+}
+async function enableNotifications() {
+  ensureAudio();
+  if (!("Notification" in window)) {
+    showFlash("Meldingen worden niet ondersteund op dit toestel — het geluidje werkt wel");
+    return;
+  }
+  const perm = await Notification.requestPermission();
+  showFlash(perm === "granted"
+    ? "Meldingen staan aan — je hoort het als iemand een rondje haalt! 🔔"
+    : "Meldingen geweigerd — het geluidje in de app werkt nog wel");
+  render();
+}
+
 // ---------- setup-scherm ----------
 function renderSetup(error) {
   root.innerHTML = `
@@ -244,8 +332,9 @@ function handleConnect() {
 const S = {
   myName: localStorage.getItem("rondje-naam") || "",
   members: [], drinks: [], activeRound: null, joins: [], history: [],
-  pickingOwn: false, showManage: false,
+  pickingOwn: false, showManage: false, showLastOrder: false,
   flash: null, ready: false, shareUrl: "",
+  showWhatsNew: parseInt(localStorage.getItem("rondje-versie") || "0", 10) < APP_VERSION,
 };
 let db = null;
 const R = (p) => ref(db, p);
@@ -262,8 +351,14 @@ function initApp(cfg) {
   db = getDatabase(app);
   S.shareUrl = shareUrl(cfg);
 
+  // service worker voor nette meldingen (optioneel; faalt stil als sw.js ontbreekt)
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+
   let joinsUnsub = null;
   let watchedRoundId = null;
+  let prevRoundId = undefined; // undefined = nog geen eerste snapshot gehad
 
   onValue(R("drinks"), (snap) => {
     const v = snap.val();
@@ -289,6 +384,14 @@ function initApp(cfg) {
   onValue(R("activeRound"), (snap) => {
     S.activeRound = snap.val() || null;
     const rid = S.activeRound ? S.activeRound.id : null;
+
+    // melding bij een nieuw rondje van iemand anders (niet bij eerste load)
+    if (prevRoundId !== undefined && rid && rid !== prevRoundId
+        && S.activeRound.buyer !== S.myName && S.myName) {
+      notifyRound(S.activeRound.buyer);
+    }
+    prevRoundId = rid;
+
     if (rid !== watchedRoundId) {
       if (joinsUnsub) { joinsUnsub(); joinsUnsub = null; }
       watchedRoundId = rid;
@@ -356,6 +459,7 @@ async function closeRound() {
     });
     await remove(R("activeRound"));
     await remove(R(`joins/${rid}`));
+    S.showLastOrder = true; // bestelling blijft direct zichtbaar voor de haler
     showFlash("Proost! 🍻");
   } catch { showFlash("Afronden mislukt, probeer opnieuw"); }
 }
@@ -427,6 +531,41 @@ function drinkPicker(action, selectedId) {
     </button>`).join("") + `</div>`;
 }
 
+function bestelLijst(items, titel) {
+  const tally = tallyDrinks(items);
+  const totaal = items.reduce((a, it) => a + (it.price || 0), 0);
+  return `
+    <div class="bestel">
+      <p class="bestel-title">${esc(titel)}</p>
+      ${tally.map((t) => `
+        <div class="bestel-line">
+          <span><span class="aantal">${t.count}×</span> ${esc(t.drinkName)}</span>
+          <span style="color:var(--muted)">${euro(t.sum)}</span>
+        </div>`).join("")}
+      <div class="bestel-line" style="border-top:1px dashed var(--card-border);margin-top:6px;padding-top:8px">
+        <span style="font-weight:700">Totaal (${items.length})</span>
+        <span class="aantal">${euro(totaal)}</span>
+      </div>
+    </div>`;
+}
+
+function whatsNewModal() {
+  return `
+    <div class="overlay">
+      <div class="modal">
+        <h2>Nieuw!</h2>
+        <p style="margin:0;color:var(--muted);font-size:13px">De villa-app is bijgewerkt ✦</p>
+        <ul>
+          <li>📋 <span class="em">Bestellijst per rondje:</span> tijdens het rondje zie je een optelling per drankje (3× groot, 2× klein…), en na afloop kun je de laatste bestelling altijd terughalen — handig aan de bar!</li>
+          <li>🔔 <span class="em">Meldingen met geluid:</span> zet meldingen aan en je hoort een deuntje zodra iemand een rondje haalt (zolang de app openstaat).</li>
+          <li>📊 <span class="em">Weekendtelling:</span> onder de totalen zie je hoeveel er van elk drankje doorheen is gegaan.</li>
+        </ul>
+        <button class="bigbtn" data-action="closeWhatsNew">Let's go! 🍻</button>
+        <button class="secbtn" data-action="whatsNewNotify">🔔 Meteen meldingen aanzetten</button>
+      </div>
+    </div>`;
+}
+
 function render() {
   if (!S.ready) return;
 
@@ -444,6 +583,9 @@ function render() {
     ${S.flash ? `<div class="flash">${esc(S.flash)}</div>` : ""}`;
 
   const shareBtn = `<button class="secbtn" data-action="share">🔗 Deel-link kopiëren voor je vrienden</button>`;
+  const notifyBtn = ("Notification" in window) && Notification.permission !== "granted"
+    ? `<button class="secbtn" data-action="notify">🔔 Meldingen met geluid aanzetten</button>` : "";
+  const modal = S.showWhatsNew && S.myName ? whatsNewModal() : "";
 
   if (!S.myName) {
     root.innerHTML = header + `
@@ -461,8 +603,11 @@ function render() {
 
   const board = computeStats();
   const totaalRondjes = S.history.length;
-  const totaalDrankjes = S.history.reduce((a, r) => a + r.items.length, 0);
-  const totaalEuro = S.history.reduce((a, r) => a + r.items.reduce((x, it) => x + (it.price || 0), 0), 0);
+  const alleItems = S.history.flatMap((r) => r.items);
+  const totaalDrankjes = alleItems.length;
+  const totaalEuro = alleItems.reduce((a, it) => a + (it.price || 0), 0);
+  const weekendTally = tallyDrinks(alleItems);
+  const laatste = S.history.length > 0 ? S.history[S.history.length - 1] : null;
   const beurt = totaalRondjes > 0 && board.length > 1
     ? [...board].sort((a, b) => a.saldo - b.saldo || a.gehaald - b.gehaald || b.gedronken - a.gedronken)[0]
     : null;
@@ -470,7 +615,11 @@ function render() {
   const iAmBuyer = S.activeRound && S.activeRound.buyer === S.myName;
   const myJoin = S.joins.find((j) => j.name === S.myName);
   const roundStale = S.activeRound && Date.now() - S.activeRound.startedAt > 20 * 60 * 1000;
-  const activeTotal = S.joins.reduce((a, j) => a + ((drinkById(j.drinkId) || {}).price || 0), 0);
+  const activeItems = S.joins.map((j) => {
+    const d = drinkById(j.drinkId);
+    return { name: j.name, drinkName: d ? d.name : "?", price: d ? d.price : 0 };
+  });
+  const activeTotal = activeItems.reduce((a, it) => a + (it.price || 0), 0);
 
   let actie = "";
   if (!S.activeRound && !S.pickingOwn) {
@@ -493,16 +642,17 @@ function render() {
           return `<span class="chip${j.name === S.myName ? " me" : ""}">${j.name === S.activeRound.buyer ? "🍺 " : ""}${esc(j.name)} <small>· ${d ? esc(d.name) : "?"}</small></span>`;
         }).join("")}
       </div>
+      ${activeItems.length > 0 ? bestelLijst(activeItems, "📋 De bestelling tot nu toe") : ""}
       ${!iAmBuyer ? `
         <p class="label" style="margin-top:16px">${myJoin ? "Jouw bestelling (tik om te wisselen)" : "Wat wil jij?"}</p>
         ${drinkPicker("join", myJoin ? myJoin.drinkId : null)}
         ${myJoin ? `<p style="text-align:center;color:var(--cyan);font-weight:700;margin:12px 0 0">Je staat op de lijst — hij komt eraan 🍻</p>` : ""}` : ""}
       ${(iAmBuyer || roundStale) ? `
         <button class="bigbtn" style="margin-top:16px" data-action="close">✅ Rondje binnen · ${euro(activeTotal)}</button>
-        ${iAmBuyer ? `<p style="text-align:center;color:var(--muted);font-size:12px;margin:10px 0 0">Druk hierop zodra iedereen z'n drankje heeft doorgegeven.</p>` : ""}` : ""}`;
+        ${iAmBuyer ? `<p style="text-align:center;color:var(--muted);font-size:12px;margin:10px 0 0">Sluit pas af als iedereen z'n drankje heeft doorgegeven. De bestellijst blijft daarna terug te vinden onder "Laatste bestelling".</p>` : ""}` : ""}`;
   }
 
-  root.innerHTML = header + `
+  root.innerHTML = modal + header + `
     ${beurt && !S.activeRound ? `
       <div class="beurt"><span class="beurt-emoji">🫵</span><div>
         <div class="beurt-name">${beurt.name === S.myName ? "Jij bent aan de beurt!" : esc(beurt.name) + " is aan de beurt"}</div>
@@ -511,11 +661,24 @@ function render() {
 
     <div class="card">${actie}</div>
 
+    ${laatste && !S.activeRound ? `
+      <button class="secbtn" data-action="toggleLastOrder">${S.showLastOrder ? "Laatste bestelling verbergen" : `📋 Laatste bestelling terugkijken (${timeStr(laatste.closedAt)})`}</button>
+      ${S.showLastOrder ? `
+        <div class="card" style="margin-top:12px">
+          <p class="label" style="margin:0 0 2px">Laatste bestelling · ${esc(laatste.buyer)} haalde om ${timeStr(laatste.closedAt)}</p>
+          ${bestelLijst(laatste.items, "📋 Wat er gehaald moest worden")}
+          <div class="chips">
+            ${laatste.items.map((it) => `<span class="chip">${it.name === laatste.buyer ? "🍺 " : ""}${esc(it.name)} <small>· ${esc(it.drinkName)}</small></span>`).join("")}
+          </div>
+        </div>` : ""}` : ""}
+
     <div class="totals">
       <div class="total"><div class="totalnum">${totaalRondjes}</div><div class="label">Rondjes</div></div>
       <div class="total"><div class="totalnum">${totaalDrankjes}</div><div class="label">Drankjes</div></div>
       <div class="total"><div class="totalnum small">${euro(totaalEuro)}</div><div class="label">Omzet</div></div>
     </div>
+    ${weekendTally.length > 0 ? `
+      <p class="weekendmix">Dit weekend: ${weekendTally.map((t) => `<b>${t.count}×</b> ${esc(t.drinkName)}`).join(" · ")}</p>` : ""}
 
     <div class="card">
       <p class="label" style="margin:0 0 4px">De turflijst · rondjes gehaald</p>
@@ -554,10 +717,12 @@ function render() {
         <p class="label" style="margin:0 0 6px">Laatste rondjes</p>
         ${[...S.history].reverse().slice(0, 8).map((r) => {
           const cost = r.items.reduce((a, it) => a + (it.price || 0), 0);
-          return `<div class="hist"><b>${esc(r.buyer)}</b> haalde er ${r.items.length} om ${timeStr(r.closedAt)}${cost > 0 ? " · " + euro(cost) : ""}</div>`;
+          const tally = tallyDrinks(r.items).map((t) => `${t.count}× ${esc(t.drinkName)}`).join(", ");
+          return `<div class="hist"><b>${esc(r.buyer)}</b> · ${timeStr(r.closedAt)} · ${tally}${cost > 0 ? " · " + euro(cost) : ""}</div>`;
         }).join("")}
       </div>` : ""}
 
+    ${notifyBtn}
     ${shareBtn}
 
     <p class="note">Iedereen met de deel-link ziet de turflijst en doet mee onder eigen naam.<br/>Updates verschijnen live bij de hele groep. ✦</p>`;
@@ -577,6 +742,7 @@ function restore(keep) {
 
 // ---------- events ----------
 document.addEventListener("click", (e) => {
+  ensureAudio(); // audio ontgrendelen bij eerste interactie
   const btn = e.target.closest("[data-action]");
   if (!btn) return;
   const a = btn.dataset.action;
@@ -588,9 +754,20 @@ document.addEventListener("click", (e) => {
   else if (a === "join") joinRound(btn.dataset.id);
   else if (a === "close") closeRound();
   else if (a === "toggleManage") { S.showManage = !S.showManage; render(); }
+  else if (a === "toggleLastOrder") { S.showLastOrder = !S.showLastOrder; render(); }
   else if (a === "addDrink") addDrink();
   else if (a === "removeDrink") removeDrink(btn.dataset.id);
   else if (a === "share") shareLink();
+  else if (a === "notify") enableNotifications();
+  else if (a === "closeWhatsNew") {
+    localStorage.setItem("rondje-versie", String(APP_VERSION));
+    S.showWhatsNew = false; render();
+  }
+  else if (a === "whatsNewNotify") {
+    localStorage.setItem("rondje-versie", String(APP_VERSION));
+    S.showWhatsNew = false;
+    enableNotifications();
+  }
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target.id === "inp-naam") register();
