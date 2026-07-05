@@ -250,7 +250,7 @@ function ensureAudio() {
     audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === "suspended") audioCtx.resume();
   } catch { /* geen audio beschikbaar */ }
-}
+} 
 function playChime() {
   try {
     ensureAudio();
