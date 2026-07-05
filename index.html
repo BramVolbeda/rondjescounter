@@ -110,6 +110,11 @@
   .rank { width: 22px; font-family: 'Bebas Neue', sans-serif; font-size: 20px; color: var(--violet); }
   .pname { flex: 1; font-weight: 700; font-size: 16px; }
   .pname small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+  .pbadges { font-size: 14px; letter-spacing: 1px; }
+  .badge-row { display: flex; align-items: flex-start; gap: 12px; padding: 9px 0; border-bottom: 1px dashed var(--card-border); }
+  .badge-row:last-child { border-bottom: none; }
+  .badge-row.locked { opacity: .45; }
+  .badge-emoji { font-size: 26px; line-height: 1.2; }
   .saldo { font-size: 13px; font-weight: 700; min-width: 64px; text-align: right; }
   .saldo.pos { color: var(--cyan); } .saldo.neg { color: var(--orange); }
   .turf { color: var(--orange); display: inline-flex; gap: 6px; align-items: center; }
@@ -163,7 +168,91 @@ import {
   getDatabase, ref, onValue, set, get, remove, push, runTransaction
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-const APP_VERSION = 3;
+const APP_VERSION = 4;
+
+// ---------- badges ----------
+const BADGES = [
+  { id: "aftrap", emoji: "🍺", naam: "De Aftrap", omschrijving: "Je eerste rondje gehaald", check: (p) => p.gehaald >= 1 },
+  { id: "stamgast", emoji: "🏅", naam: "Stamgast", omschrijving: "5 rondjes gehaald", check: (p) => p.gehaald >= 5 },
+  { id: "legende", emoji: "👑", naam: "Legende van de Villa", omschrijving: "10 rondjes gehaald", check: (p) => p.gehaald >= 10 },
+  { id: "bigspender", emoji: "💸", naam: "Big Spender", omschrijving: "Een rondje van 6+ drankjes gehaald", check: (p) => p.maxRound >= 6 },
+  { id: "suikeroom", emoji: "🤑", naam: "Suikeroom", omschrijving: "€50 uitgegeven aan rondjes", check: (p) => p.uitgegeven >= 50 },
+  { id: "spons", emoji: "🧽", naam: "De Spons", omschrijving: "15 drankjes op", check: (p) => p.gedronken >= 15 },
+  { id: "mixoloog", emoji: "🍹", naam: "Mixoloog", omschrijving: "4 verschillende dranksoorten geprobeerd", check: (p) => p.soorten.size >= 4 },
+  { id: "shotjesbaas", emoji: "🥃", naam: "Shotjesbaas", omschrijving: "5 shotjes op (alles met 'shot' in de naam telt)", check: (p) => p.shots >= 5 },
+  { id: "weldoener", emoji: "😇", naam: "Weldoener", omschrijving: "Saldo boven de +€15", check: (p) => p.saldo >= 15 },
+  { id: "dubbelslag", emoji: "⚡", naam: "Dubbelslag", omschrijving: "Twee rondjes direct achter elkaar gehaald", check: (p) => p.dubbelslag },
+  { id: "eergered", emoji: "🫡", naam: "Eer Gered", omschrijving: "Je was aan de beurt en haalde binnen het kwartier", check: (p) => p.eergered },
+  { id: "vroegevogel", emoji: "🌅", naam: "Vroege Vogel", omschrijving: "Rondje gehaald vóór 12:00", check: (p) => p.vroeg },
+  { id: "nachtburgemeester", emoji: "🦉", naam: "Nachtburgemeester", omschrijving: "Rondje gehaald tussen 02:00 en 06:00", check: (p) => p.nacht },
+  { id: "sprintservice", emoji: "🏃", naam: "Sprintservice", omschrijving: "Rondje van 3+ drankjes binnen 5 minuten binnengebracht", check: (p) => p.sprint },
+];
+const badgeById = (id) => BADGES.find((b) => b.id === id);
+let badgeCache = {}; // naam -> [badge-ids], berekend uit de historie
+
+function computeAllBadges(history) {
+  const per = {};
+  const P = (n) => (per[n] ||= {
+    gehaald: 0, gedronken: 0, uitgegeven: 0, gekregen: 0,
+    soorten: new Set(), shots: 0, maxRound: 0,
+    dubbelslag: false, eergered: false, vroeg: false, nacht: false, sprint: false,
+  });
+  const running = {}; // tussenstand van saldo's voor de eergered-check
+  const RS = (n) => (running[n] ||= { uit: 0, kreeg: 0 });
+  let prev = null;
+  history.forEach((r) => {
+    const items = r.items;
+    const cost = items.reduce((a, it) => a + (it.price || 0), 0);
+    const b = P(r.buyer);
+    b.gehaald += 1;
+    b.uitgegeven += cost;
+    if (items.length > b.maxRound) b.maxRound = items.length;
+    const uur = new Date(r.startedAt || r.closedAt).getHours();
+    if (uur >= 6 && uur < 12) b.vroeg = true;
+    if (uur >= 2 && uur < 6) b.nacht = true;
+    if (r.startedAt && r.closedAt - r.startedAt <= 5 * 60 * 1000 && items.length >= 3) b.sprint = true;
+    if (prev && prev.buyer === r.buyer) b.dubbelslag = true;
+    // eergered: stond deze haler 'aan de beurt' na het vorige rondje, en haalde die snel?
+    if (prev && r.startedAt && r.startedAt - prev.closedAt <= 15 * 60 * 1000) {
+      const namen = Object.keys(running);
+      if (namen.length > 1) {
+        const beurtNaam = namen
+          .map((n) => ({ n, s: running[n].uit - running[n].kreeg }))
+          .sort((x, y) => x.s - y.s)[0].n;
+        if (beurtNaam === r.buyer) b.eergered = true;
+      }
+    }
+    items.forEach((it) => {
+      const p = P(it.name);
+      p.gedronken += 1;
+      p.gekregen += it.price || 0;
+      p.soorten.add(it.drinkName);
+      if ((it.drinkName || "").toLowerCase().includes("shot")) p.shots += 1;
+    });
+    RS(r.buyer).uit += cost;
+    items.forEach((it) => { RS(it.name).kreeg += it.price || 0; });
+    prev = r;
+  });
+  const out = {};
+  Object.entries(per).forEach(([n, p]) => {
+    p.saldo = p.uitgegeven - p.gekregen;
+    out[n] = BADGES.filter((b) => b.check(p)).map((b) => b.id);
+  });
+  return out;
+}
+
+function refreshBadges() {
+  badgeCache = computeAllBadges(S.history);
+  if (!S.myName) return;
+  const mijn = badgeCache[S.myName] || [];
+  let seen;
+  try { seen = JSON.parse(localStorage.getItem("rondje-badges") || "[]"); } catch { seen = []; }
+  const nieuw = mijn.filter((id) => !seen.includes(id));
+  if (nieuw.length > 0 && S.newBadges.length === 0) {
+    S.newBadges = nieuw;
+    playChime();
+  }
+}
 
 // ---------- helpers ----------
 const root = document.getElementById("root");
@@ -250,7 +339,7 @@ function ensureAudio() {
     audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === "suspended") audioCtx.resume();
   } catch { /* geen audio beschikbaar */ }
-} 
+}
 function playChime() {
   try {
     ensureAudio();
@@ -343,7 +432,7 @@ const S = {
   myName: localStorage.getItem("rondje-naam") || "",
   members: [], drinks: [], activeRound: null, joins: [], history: [],
   pickingOwn: false, showManage: false, showLastOrder: false,
-  orderFor: null,
+  orderFor: null, newBadges: [], showBadges: false,
   flash: null, ready: false, shareUrl: "",
   showWhatsNew: parseInt(localStorage.getItem("rondje-versie") || "0", 10) < APP_VERSION,
 };
@@ -389,6 +478,7 @@ function initApp(cfg) {
     S.history = Object.entries(v)
       .map(([id, r]) => ({ id, ...r, items: r.items ? Object.values(r.items) : [] }))
       .sort((a, b) => a.closedAt - b.closedAt);
+    refreshBadges();
     render();
   });
 
@@ -581,11 +671,28 @@ function whatsNewModal() {
         <h2>Nieuw!</h2>
         <p style="margin:0;color:var(--muted);font-size:13px">De villa-app is bijgewerkt ✦</p>
         <ul>
-          <li>🍻 <span class="em">Bestellen voor een ander:</span> de haler kan nu ook drankjes aanklikken voor wie z'n telefoon in z'n zak laat zitten.</li>
-          <li>🔔 <span class="em">Meldingen-knop staat nu altijd onderaan</span> — ook als je de vorige popup hebt weggeklikt. (Op iPhone ondersteunt Apple webmeldingen helaas niet; het geluidje werkt daar wel zolang de app openstaat.)</li>
+          <li>🏆 <span class="em">Badges!</span> Verdien ze door rondjes te halen, dranksoorten te proberen of op gekke tijden te bestellen. Haal je er één binnen, dan krijg je een popup — en je badges pronken achter je naam op de turflijst.</li>
+          <li>👀 <span class="em">Badge-overzicht:</span> via de knop "🏆 Badges" zie je welke er allemaal te verdienen zijn. Aan de slag dus.</li>
         </ul>
         <button class="bigbtn" data-action="closeWhatsNew">Let's go! 🍻</button>
-        <button class="secbtn" data-action="whatsNewNotify">🔔 Meteen meldingen aanzetten</button>
+      </div>
+    </div>`;
+}
+
+function badgeModal() {
+  const n = S.newBadges.length;
+  return `
+    <div class="overlay">
+      <div class="modal">
+        <h2>${n === 1 ? "Badge verdiend!" : n + " badges verdiend!"}</h2>
+        <p style="margin:0;color:var(--muted);font-size:13px">✦ Gefeliciteerd, ${esc(S.myName)} ✦</p>
+        <ul>
+          ${S.newBadges.map((id) => {
+            const b = badgeById(id);
+            return b ? `<li><span style="font-size:22px">${b.emoji}</span> <span class="em" style="font-family:'Bebas Neue',sans-serif;letter-spacing:2px;font-size:18px">${esc(b.naam)}</span><br/><span style="color:var(--muted);font-size:13px">${esc(b.omschrijving)}</span></li>` : "";
+          }).join("")}
+        </ul>
+        <button class="bigbtn" data-action="closeBadges">Lekker bezig! 🍻</button>
       </div>
     </div>`;
 }
@@ -609,7 +716,9 @@ function render() {
   const shareBtn = `<button class="secbtn" data-action="share">🔗 Deel-link kopiëren voor je vrienden</button>`;
   const notifyBtn = notifSupported() && Notification.permission !== "granted"
     ? `<button class="secbtn" data-action="notify">🔔 Meldingen met geluid aanzetten</button>` : "";
-  const modal = S.showWhatsNew && S.myName ? whatsNewModal() : "";
+  let modal = "";
+  if (S.showWhatsNew && S.myName) modal = whatsNewModal();
+  else if (S.newBadges.length > 0 && S.myName) modal = badgeModal();
 
   if (!S.myName) {
     root.innerHTML = header + `
@@ -725,12 +834,39 @@ function render() {
       ${board.map((p, i) => `
         <div class="tablerow">
           <span class="rank">${i + 1}</span>
-          <span class="pname">${esc(p.name)}<small>${p.gedronken} drankjes · ${euro(p.uitgegeven)} uitgegeven</small></span>
+          <span class="pname">${esc(p.name)}${(badgeCache[p.name] || []).length > 0 ? ` <span class="pbadges" title="Badges">${(badgeCache[p.name] || []).map((id) => (badgeById(id) || {}).emoji || "").join("")}</span>` : ""}<small>${p.gedronken} drankjes · ${euro(p.uitgegeven)} uitgegeven</small></span>
           ${turfSvg(p.gehaald)}
           <span class="saldo ${p.saldo >= 0 ? "pos" : "neg"}">${p.saldo >= 0 ? "+" : ""}${euro(p.saldo)}</span>
         </div>`).join("")}
       ${board.length > 0 ? `<p style="color:var(--muted);font-size:12px;margin:12px 0 0">Saldo = uitgegeven aan rondjes − waarde van je eigen drankjes. In de min? Dan ben jij binnenkort aan de beurt.</p>` : ""}
     </div>
+
+    <button class="secbtn" data-action="toggleBadges">${S.showBadges ? "Badges sluiten" : "🏆 Badges · welke kun jij verdienen?"}</button>
+    ${S.showBadges ? `
+      <div class="card" style="margin-top:12px">
+        <p class="label" style="margin:0 0 6px">Jouw badgejacht</p>
+        ${(() => {
+          const doorIemand = new Set(Object.values(badgeCache).flat());
+          return BADGES.map((b) => {
+            const earned = (badgeCache[S.myName] || []).includes(b.id);
+            const onthuld = doorIemand.has(b.id);
+            if (!onthuld) {
+              return `
+                <div class="badge-row locked">
+                  <span class="badge-emoji">❓</span>
+                  <span style="flex:1"><b style="font-family:'Bebas Neue',sans-serif;letter-spacing:2px;font-size:17px;color:var(--muted)">Geheime badge</b><br/><span style="color:var(--muted);font-size:13px">Nog door niemand ontgrendeld…</span></span>
+                </div>`;
+            }
+            return `
+              <div class="badge-row${earned ? "" : " locked"}">
+                <span class="badge-emoji">${b.emoji}</span>
+                <span style="flex:1"><b style="font-family:'Bebas Neue',sans-serif;letter-spacing:2px;font-size:17px;color:${earned ? "var(--orange)" : "var(--muted)"}">${esc(b.naam)}</b><br/><span style="color:var(--muted);font-size:13px">${esc(b.omschrijving)}</span></span>
+                ${earned ? `<span style="color:var(--cyan);font-weight:700">✓</span>` : ""}
+              </div>`;
+          }).join("");
+        })()}
+        <p style="color:var(--muted);font-size:12px;margin:12px 0 0">❓-badges blijven geheim tot iemand in de groep ze als eerste ontgrendelt.</p>
+      </div>` : ""}
 
     <button class="secbtn" data-action="toggleManage">${S.showManage ? "Drankjeskaart sluiten" : "🍹 Drankjeskaart &amp; prijzen"}</button>
     ${S.showManage ? `
@@ -801,14 +937,17 @@ document.addEventListener("click", (e) => {
   else if (a === "removeDrink") removeDrink(btn.dataset.id);
   else if (a === "share") shareLink();
   else if (a === "notify") enableNotifications();
+  else if (a === "toggleBadges") { S.showBadges = !S.showBadges; render(); }
+  else if (a === "closeBadges") {
+    let seen;
+    try { seen = JSON.parse(localStorage.getItem("rondje-badges") || "[]"); } catch { seen = []; }
+    localStorage.setItem("rondje-badges", JSON.stringify([...new Set([...seen, ...S.newBadges])]));
+    S.newBadges = [];
+    render();
+  }
   else if (a === "closeWhatsNew") {
     localStorage.setItem("rondje-versie", String(APP_VERSION));
     S.showWhatsNew = false; render();
-  }
-  else if (a === "whatsNewNotify") {
-    localStorage.setItem("rondje-versie", String(APP_VERSION));
-    S.showWhatsNew = false;
-    enableNotifications();
   }
 });
 document.addEventListener("keydown", (e) => {
