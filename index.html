@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Rondje! · Villa Escalatopia</title>
+<meta name="theme-color" content="#2A2254" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&family=Bebas+Neue&family=Aleo:wght@400;700&display=swap" rel="stylesheet" />
 <style>
@@ -84,10 +85,12 @@
     -webkit-background-clip: text; background-clip: text; color: transparent; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .chip { background: var(--indigo); border: 1px solid var(--card-border); border-radius: 999px;
-    padding: 5px 12px; font-size: 14px; font-weight: 700; }
+    padding: 5px 12px; font-size: 14px; font-weight: 700; color: var(--text); font-family: 'Aleo', serif; }
   .chip small { font-weight: 400; color: var(--muted); }
   .chip.me { background: linear-gradient(90deg, var(--violet), var(--magenta)); border-color: var(--magenta); color: #fff; }
   .chip.me small { color: var(--pink); }
+  button.chip { cursor: pointer; }
+  .chip.pick { border-color: var(--cyan); background: #2E5468; }
   .drinksList { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
   .drinkbtn { display: flex; justify-content: space-between; align-items: center;
     border-radius: 12px; border: 1px solid var(--card-border); background: var(--indigo);
@@ -134,7 +137,7 @@
   .addrow { display: flex; gap: 8px; margin-top: 12px; }
   .addrow .input { margin-bottom: 0; }
   .addrow .prijs { max-width: 92px; }
-  .setup ol { padding-left: 20px; line-height: 1.7; font-size: 14px; color: var(--pink); margin: 10px 0; }
+  .setup ol, .modal ol { padding-left: 20px; line-height: 1.7; font-size: 14px; color: var(--pink); margin: 10px 0; }
   .setup code { background: var(--indigo-deep); border-radius: 6px; padding: 2px 6px; font-size: 13px; color: var(--orange); }
   .err { color: var(--orange); font-size: 13px; font-weight: 700; margin: 10px 0 0; }
   .overlay { position: fixed; inset: 0; background: rgba(20,14,50,.8); display: flex;
@@ -160,7 +163,7 @@ import {
   getDatabase, ref, onValue, set, get, remove, push, runTransaction
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-const APP_VERSION = 2;
+const APP_VERSION = 3;
 
 // ---------- helpers ----------
 const root = document.getElementById("root");
@@ -189,7 +192,14 @@ function tallyDrinks(items) {
 
 // ---------- config: uit URL, lokale opslag, of eenmalig plakken ----------
 function parseConfigText(txt) {
-  const m = String(txt).match(/\{[\s\S]*\}/);
+  txt = String(txt);
+  // ook een geplakte deel-link met #cfg=… wordt herkend
+  const link = txt.match(/#cfg=([A-Za-z0-9_-]+)/);
+  if (link) {
+    const c = decodeCfg(link[1]);
+    if (c) return c;
+  }
+  const m = txt.match(/\{[\s\S]*\}/);
   if (!m) return null;
   try { return new Function("return " + m[0])(); } catch { return null; }
 }
@@ -259,10 +269,11 @@ function playChime() {
     });
   } catch { /* geluid is nice-to-have */ }
 }
+const notifSupported = () => "Notification" in window;
 async function notifyRound(buyer) {
   playChime();
   try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch {}
-  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  if (!notifSupported() || Notification.permission !== "granted") return;
   const opts = {
     body: `${buyer} haalt een rondje — geef je bestelling door! 🍺`,
     tag: "rondje", renotify: true, vibrate: [200, 100, 200],
@@ -277,8 +288,8 @@ async function notifyRound(buyer) {
 }
 async function enableNotifications() {
   ensureAudio();
-  if (!("Notification" in window)) {
-    showFlash("Meldingen worden niet ondersteund op dit toestel — het geluidje werkt wel");
+  if (!notifSupported()) {
+    showFlash("Meldingen worden hier niet ondersteund — het geluidje in de app werkt wel");
     return;
   }
   const perm = await Notification.requestPermission();
@@ -293,20 +304,19 @@ function renderSetup(error) {
   root.innerHTML = `
     <header class="header"><h1 class="title">Rondje!</h1><p class="sub"><span class="spark">✦</span> Eenmalige setup <span class="spark">✦</span></p></header>
     <div class="card setup">
-      <p class="label">Verbind je database</p>
+      <p class="label">Verbind je villa</p>
+      <p style="font-size:14px;color:var(--muted);margin:8px 0 4px"><b style="color:var(--pink)">Heb je een deel-link uit de groepsapp?</b> Plak hem hieronder — klaar.</p>
+      <p style="font-size:14px;color:var(--muted);margin:4px 0 10px">Nieuwe villa opzetten? Volg dan deze stappen:</p>
       <ol>
         <li>Ga naar <code>console.firebase.google.com</code>, maak een project</li>
         <li><b>Build → Realtime Database → Create database</b> (test mode)</li>
         <li><b>Project settings → Your apps → Web</b> <code>&lt;/&gt;</code> → kopieer de <code>firebaseConfig</code></li>
         <li>Plak hem hieronder</li>
       </ol>
-      <textarea id="inp-config" class="input" placeholder="Plak hier je firebaseConfig…"></textarea>
+      <textarea id="inp-config" class="input" placeholder="Plak hier je deel-link of firebaseConfig…"></textarea>
       <input id="inp-dburl" class="input" placeholder="databaseURL (alleen als die niet in de config staat)" />
       <button class="bigbtn" data-action="connect">Verbinden</button>
       ${error ? `<p class="err">${esc(error)}</p>` : ""}
-      <p style="color:var(--muted);font-size:12px;margin:12px 0 0">
-        Na het verbinden krijg je een deel-link waar de configuratie al in zit — je vrienden hoeven dus niets in te stellen.
-      </p>
     </div>`;
 }
 
@@ -315,7 +325,7 @@ function handleConnect() {
   const dbUrl = ((document.getElementById("inp-dburl") || {}).value || "").trim();
   const cfg = parseConfigText(cfgTxt);
   if (!cfg || !cfg.apiKey) {
-    renderSetup("Dat lijkt geen geldige firebaseConfig. Kopieer het hele blok, inclusief de accolades { }.");
+    renderSetup("Dat lijkt geen geldige deel-link of firebaseConfig. Kopieer de hele link, of het hele config-blok inclusief accolades { }.");
     return;
   }
   if (!cfg.databaseURL && dbUrl) cfg.databaseURL = dbUrl;
@@ -333,6 +343,7 @@ const S = {
   myName: localStorage.getItem("rondje-naam") || "",
   members: [], drinks: [], activeRound: null, joins: [], history: [],
   pickingOwn: false, showManage: false, showLastOrder: false,
+  orderFor: null,
   flash: null, ready: false, shareUrl: "",
   showWhatsNew: parseInt(localStorage.getItem("rondje-versie") || "0", 10) < APP_VERSION,
 };
@@ -396,6 +407,7 @@ function initApp(cfg) {
       if (joinsUnsub) { joinsUnsub(); joinsUnsub = null; }
       watchedRoundId = rid;
       S.joins = [];
+      S.orderFor = null;
       if (rid) {
         joinsUnsub = onValue(R(`joins/${rid}`), (js) => {
           S.joins = Object.values(js.val() || {});
@@ -436,11 +448,24 @@ async function startRound(drinkId) {
   } catch { showFlash("Rondje starten mislukt, probeer opnieuw"); }
 }
 
-async function joinRound(drinkId) {
+async function setJoin(personName, drinkId) {
   if (!S.activeRound) return;
+  await set(R(`joins/${S.activeRound.id}/${nameKey(personName)}`), { name: personName, drinkId });
+}
+
+async function joinRound(drinkId) {
+  try { await setJoin(S.myName, drinkId); }
+  catch { showFlash("Meedoen mislukt, probeer opnieuw"); }
+}
+
+async function joinForRound(drinkId) {
+  if (!S.orderFor) return;
+  const wie = S.orderFor;
   try {
-    await set(R(`joins/${S.activeRound.id}/${nameKey(S.myName)}`), { name: S.myName, drinkId });
-  } catch { showFlash("Meedoen mislukt, probeer opnieuw"); }
+    await setJoin(wie, drinkId);
+    S.orderFor = null;
+    showFlash(`Genoteerd voor ${wie}! 📋`);
+  } catch { showFlash("Bestellen mislukt, probeer opnieuw"); }
 }
 
 async function closeRound() {
@@ -556,9 +581,8 @@ function whatsNewModal() {
         <h2>Nieuw!</h2>
         <p style="margin:0;color:var(--muted);font-size:13px">De villa-app is bijgewerkt ✦</p>
         <ul>
-          <li>📋 <span class="em">Bestellijst per rondje:</span> tijdens het rondje zie je een optelling per drankje (3× groot, 2× klein…), en na afloop kun je de laatste bestelling altijd terughalen — handig aan de bar!</li>
-          <li>🔔 <span class="em">Meldingen met geluid:</span> zet meldingen aan en je hoort een deuntje zodra iemand een rondje haalt (zolang de app openstaat).</li>
-          <li>📊 <span class="em">Weekendtelling:</span> onder de totalen zie je hoeveel er van elk drankje doorheen is gegaan.</li>
+          <li>🍻 <span class="em">Bestellen voor een ander:</span> de haler kan nu ook drankjes aanklikken voor wie z'n telefoon in z'n zak laat zitten.</li>
+          <li>🔔 <span class="em">Meldingen-knop staat nu altijd onderaan</span> — ook als je de vorige popup hebt weggeklikt. (Op iPhone ondersteunt Apple webmeldingen helaas niet; het geluidje werkt daar wel zolang de app openstaat.)</li>
         </ul>
         <button class="bigbtn" data-action="closeWhatsNew">Let's go! 🍻</button>
         <button class="secbtn" data-action="whatsNewNotify">🔔 Meteen meldingen aanzetten</button>
@@ -583,7 +607,7 @@ function render() {
     ${S.flash ? `<div class="flash">${esc(S.flash)}</div>` : ""}`;
 
   const shareBtn = `<button class="secbtn" data-action="share">🔗 Deel-link kopiëren voor je vrienden</button>`;
-  const notifyBtn = ("Notification" in window) && Notification.permission !== "granted"
+  const notifyBtn = notifSupported() && Notification.permission !== "granted"
     ? `<button class="secbtn" data-action="notify">🔔 Meldingen met geluid aanzetten</button>` : "";
   const modal = S.showWhatsNew && S.myName ? whatsNewModal() : "";
 
@@ -632,6 +656,7 @@ function render() {
       ${drinkPicker("start")}
       <button class="secbtn" data-action="cancelPick">Toch niet</button>`;
   } else if (S.activeRound) {
+    const orderForJoin = S.orderFor ? S.joins.find((j) => j.name === S.orderFor) : null;
     actie = `
       <div class="live"><span class="dot"></span>
         <span class="label">Rondje onderweg · gestart om ${timeStr(S.activeRound.startedAt)}</span></div>
@@ -647,6 +672,20 @@ function render() {
         <p class="label" style="margin-top:16px">${myJoin ? "Jouw bestelling (tik om te wisselen)" : "Wat wil jij?"}</p>
         ${drinkPicker("join", myJoin ? myJoin.drinkId : null)}
         ${myJoin ? `<p style="text-align:center;color:var(--cyan);font-weight:700;margin:12px 0 0">Je staat op de lijst — hij komt eraan 🍻</p>` : ""}` : ""}
+      ${iAmBuyer ? `
+        <p class="label" style="margin-top:16px">Bestellen voor een ander</p>
+        <p style="color:var(--muted);font-size:13px;margin:4px 0 0">Tik een naam aan en kies wat diegene wil — handig voor wie z'n telefoon niet pakt.</p>
+        <div class="chips">
+          ${S.members.filter((n) => n !== S.myName).map((n) => {
+            const j = S.joins.find((x) => x.name === n);
+            const d = j ? drinkById(j.drinkId) : null;
+            return `<button class="chip${S.orderFor === n ? " pick" : ""}" data-action="orderFor" data-name="${esc(n)}">${esc(n)}${d ? ` <small>· ${esc(d.name)}</small>` : " <small>· nog niks</small>"}</button>`;
+          }).join("")}
+        </div>
+        ${S.orderFor ? `
+          <p class="label" style="margin-top:12px">Wat wil ${esc(S.orderFor)}?</p>
+          ${drinkPicker("joinFor", orderForJoin ? orderForJoin.drinkId : null)}
+          <button class="secbtn" data-action="cancelOrderFor">Toch niet</button>` : ""}` : ""}
       ${(iAmBuyer || roundStale) ? `
         <button class="bigbtn" style="margin-top:16px" data-action="close">✅ Rondje binnen · ${euro(activeTotal)}</button>
         ${iAmBuyer ? `<p style="text-align:center;color:var(--muted);font-size:12px;margin:10px 0 0">Sluit pas af als iedereen z'n drankje heeft doorgegeven. De bestellijst blijft daarna terug te vinden onder "Laatste bestelling".</p>` : ""}` : ""}`;
@@ -752,6 +791,9 @@ document.addEventListener("click", (e) => {
   else if (a === "cancelPick") { S.pickingOwn = false; render(); }
   else if (a === "start") startRound(btn.dataset.id);
   else if (a === "join") joinRound(btn.dataset.id);
+  else if (a === "joinFor") joinForRound(btn.dataset.id);
+  else if (a === "orderFor") { S.orderFor = S.orderFor === btn.dataset.name ? null : btn.dataset.name; render(); }
+  else if (a === "cancelOrderFor") { S.orderFor = null; render(); }
   else if (a === "close") closeRound();
   else if (a === "toggleManage") { S.showManage = !S.showManage; render(); }
   else if (a === "toggleLastOrder") { S.showLastOrder = !S.showLastOrder; render(); }
