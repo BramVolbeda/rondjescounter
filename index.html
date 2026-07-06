@@ -115,6 +115,12 @@
   .badge-row:last-child { border-bottom: none; }
   .badge-row.locked { opacity: .45; }
   .badge-emoji { font-size: 26px; line-height: 1.2; }
+  .pay-row { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px dashed var(--card-border); }
+  .pay-row:last-of-type { border-bottom: none; }
+  .pay-from { color: var(--orange); font-weight: 700; }
+  .pay-arrow { color: var(--muted); font-family: 'Bebas Neue', sans-serif; }
+  .pay-to { color: var(--cyan); font-weight: 700; flex: 1; }
+  .pay-amount { font-family: 'Bebas Neue', sans-serif; font-size: 19px; letter-spacing: 1px; color: var(--pink); }
   .saldo { font-size: 13px; font-weight: 700; min-width: 64px; text-align: right; }
   .saldo.pos { color: var(--cyan); } .saldo.neg { color: var(--orange); }
   .turf { color: var(--orange); display: inline-flex; gap: 6px; align-items: center; }
@@ -168,7 +174,7 @@ import {
   getDatabase, ref, onValue, set, get, remove, push, runTransaction
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-const APP_VERSION = 4;
+const APP_VERSION = 5;
 
 // ---------- badges ----------
 const BADGES = [
@@ -187,8 +193,57 @@ const BADGES = [
   { id: "nachtburgemeester", emoji: "🦉", naam: "Nachtburgemeester", omschrijving: "Rondje gehaald tussen 02:00 en 06:00", check: (p) => p.nacht },
   { id: "sprintservice", emoji: "🏃", naam: "Sprintservice", omschrijving: "Rondje van 3+ drankjes binnen 5 minuten binnengebracht", check: (p) => p.sprint },
 ];
-const badgeById = (id) => BADGES.find((b) => b.id === id);
+function badgeById(id) { return BADGES.find((b) => b.id === id); }
 let badgeCache = {}; // naam -> [badge-ids], berekend uit de historie
+
+// ---------- verrekening ----------
+// Saldo = uitgegeven aan rondjes − waarde eigen drankjes.
+// Plus = geld tegoed (crediteur), min = moet bijleggen (schuldenaar).
+// We koppelen tot iedereen op 0 staat, met zo min mogelijk overboekingen.
+function computeSettlement(board) {
+  const cent = (x) => Math.round(x * 100);
+  const debiteuren = board.filter((p) => cent(p.saldo) < 0)
+    .map((p) => ({ naam: p.name, bedrag: -cent(p.saldo) })); // positief = te betalen
+  const crediteuren = board.filter((p) => cent(p.saldo) > 0)
+    .map((p) => ({ naam: p.name, bedrag: cent(p.saldo) }));   // positief = te ontvangen
+  debiteuren.sort((a, b) => b.bedrag - a.bedrag);
+  crediteuren.sort((a, b) => b.bedrag - a.bedrag);
+
+  const betalingen = [];
+  let i = 0, j = 0;
+  while (i < debiteuren.length && j < crediteuren.length) {
+    const bedrag = Math.min(debiteuren[i].bedrag, crediteuren[j].bedrag);
+    if (bedrag > 0) {
+      betalingen.push({ van: debiteuren[i].naam, naar: crediteuren[j].naam, bedrag: bedrag / 100 });
+    }
+    debiteuren[i].bedrag -= bedrag;
+    crediteuren[j].bedrag -= bedrag;
+    if (debiteuren[i].bedrag === 0) i++;
+    if (crediteuren[j].bedrag === 0) j++;
+  }
+  return betalingen;
+}
+
+function settlementText(board, betalingen, totaalEuro) {
+  const L = [];
+  L.push("🍻 RONDJE! · Eindafrekening Villa Escalatopia");
+  L.push("");
+  L.push(`Totaal doorheen: ${euro(totaalEuro)} aan drankjes`);
+  L.push("");
+  L.push("Saldo per persoon:");
+  board.forEach((p) => {
+    const teken = p.saldo >= 0 ? "+" : "−";
+    L.push(`  ${p.name}: ${teken}${euro(Math.abs(p.saldo))}`);
+  });
+  L.push("");
+  if (betalingen.length === 0) {
+    L.push("Alles staat gelijk — niemand hoeft iets te verrekenen! 🎉");
+  } else {
+    L.push("Wie betaalt wie:");
+    betalingen.forEach((b) => L.push(`  ${b.van} → ${b.naar}: ${euro(b.bedrag)}`));
+  }
+  return L.join("\n");
+}
 
 function computeAllBadges(history) {
   const per = {};
@@ -432,7 +487,7 @@ const S = {
   myName: localStorage.getItem("rondje-naam") || "",
   members: [], drinks: [], activeRound: null, joins: [], history: [],
   pickingOwn: false, showManage: false, showLastOrder: false,
-  orderFor: null, newBadges: [], showBadges: false,
+  orderFor: null, newBadges: [], showBadges: false, showAfrekening: false,
   flash: null, ready: false, shareUrl: "",
   showWhatsNew: parseInt(localStorage.getItem("rondje-versie") || "0", 10) < APP_VERSION,
 };
@@ -601,6 +656,14 @@ async function shareLink() {
   showFlash(ok ? "Deel-link gekopieerd — plak hem in de groepsapp!" : "Kopiëren lukte niet, kopieer de URL uit de adresbalk");
 }
 
+async function shareAfrekening() {
+  const board = computeStats();
+  const totaalEuro = S.history.flatMap((r) => r.items).reduce((a, it) => a + (it.price || 0), 0);
+  const betalingen = computeSettlement(board);
+  const ok = await copyText(settlementText(board, betalingen, totaalEuro));
+  showFlash(ok ? "Afrekening gekopieerd — plak 'm in de groepsapp! 🧾" : "Kopiëren lukte niet, probeer opnieuw");
+}
+
 // ---------- stats ----------
 function computeStats() {
   const stats = {};
@@ -671,8 +734,8 @@ function whatsNewModal() {
         <h2>Nieuw!</h2>
         <p style="margin:0;color:var(--muted);font-size:13px">De villa-app is bijgewerkt ✦</p>
         <ul>
-          <li>🏆 <span class="em">Badges!</span> Verdien ze door rondjes te halen, dranksoorten te proberen of op gekke tijden te bestellen. Haal je er één binnen, dan krijg je een popup — en je badges pronken achter je naam op de turflijst.</li>
-          <li>👀 <span class="em">Badge-overzicht:</span> via de knop "🏆 Badges" zie je welke er allemaal te verdienen zijn. Aan de slag dus.</li>
+          <li>🧾 <span class="em">Eindafrekening!</span> Weekend voorbij? De app rekent uit wie wie moet betalen om iedereen op nul te krijgen — met zo min mogelijk overboekingen. Vind 'm onder de turflijst.</li>
+          <li>📲 <span class="em">Deelbaar:</span> kopieer de afrekening met één tik en plak 'm in de groepsapp.</li>
         </ul>
         <button class="bigbtn" data-action="closeWhatsNew">Let's go! 🍻</button>
       </div>
@@ -694,6 +757,37 @@ function badgeModal() {
         </ul>
         <button class="bigbtn" data-action="closeBadges">Lekker bezig! 🍻</button>
       </div>
+    </div>`;
+}
+
+function renderAfrekening(board) {
+  const betalingen = computeSettlement(board);
+  const credit = board.filter((p) => Math.round(p.saldo * 100) > 0);
+  const debet = board.filter((p) => Math.round(p.saldo * 100) < 0);
+  const payHtml = betalingen.map((b) =>
+    `<div class="pay-row"><span class="pay-from">${esc(b.van)}</span><span class="pay-arrow">→</span><span class="pay-to">${esc(b.naar)}</span><span class="pay-amount">${euro(b.bedrag)}</span></div>`
+  ).join("");
+  const creditHtml = credit.map((p) =>
+    `<div style="font-size:13px;color:var(--muted)">${esc(p.name)} <span style="color:var(--cyan);font-weight:700;float:right">+${euro(p.saldo)}</span></div>`
+  ).join("") || `<div style="font-size:13px;color:var(--muted)">—</div>`;
+  const debetHtml = debet.map((p) =>
+    `<div style="font-size:13px;color:var(--muted)">${esc(p.name)} <span style="color:var(--orange);font-weight:700;float:right">−${euro(Math.abs(p.saldo))}</span></div>`
+  ).join("") || `<div style="font-size:13px;color:var(--muted)">—</div>`;
+
+  const body = betalingen.length === 0
+    ? `<p style="text-align:center;color:var(--cyan);font-weight:700;padding:8px 0">Alles staat gelijk — niemand hoeft iets te verrekenen! 🎉</p>`
+    : `${payHtml}
+       <div style="display:flex;gap:16px;margin-top:14px">
+         <div style="flex:1"><p class="label" style="font-size:12px;margin:0 0 4px">Krijgt terug</p>${creditHtml}</div>
+         <div style="flex:1"><p class="label" style="font-size:12px;margin:0 0 4px">Legt bij</p>${debetHtml}</div>
+       </div>`;
+
+  return `
+    <div class="card" style="margin-top:12px">
+      <p class="label" style="margin:0 0 2px">De eindafrekening</p>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 12px">Iedereen in de min legt bij tot nul; iedereen in de plus krijgt z'n voorschot terug. Zo min mogelijk overboekingen.</p>
+      ${body}
+      <button class="secbtn" data-action="shareAfrekening">🧾 Afrekening kopiëren voor de groepsapp</button>
     </div>`;
 }
 
@@ -841,6 +935,10 @@ function render() {
       ${board.length > 0 ? `<p style="color:var(--muted);font-size:12px;margin:12px 0 0">Saldo = uitgegeven aan rondjes − waarde van je eigen drankjes. In de min? Dan ben jij binnenkort aan de beurt.</p>` : ""}
     </div>
 
+    ${board.length > 1 ? `
+      <button class="secbtn" data-action="toggleAfrekening">${S.showAfrekening ? "Eindafrekening sluiten" : "🧾 Eindafrekening · wie betaalt wie?"}</button>
+      ${S.showAfrekening ? renderAfrekening(board) : ""}` : ""}
+
     <button class="secbtn" data-action="toggleBadges">${S.showBadges ? "Badges sluiten" : "🏆 Badges · welke kun jij verdienen?"}</button>
     ${S.showBadges ? `
       <div class="card" style="margin-top:12px">
@@ -938,6 +1036,8 @@ document.addEventListener("click", (e) => {
   else if (a === "share") shareLink();
   else if (a === "notify") enableNotifications();
   else if (a === "toggleBadges") { S.showBadges = !S.showBadges; render(); }
+  else if (a === "toggleAfrekening") { S.showAfrekening = !S.showAfrekening; render(); }
+  else if (a === "shareAfrekening") shareAfrekening();
   else if (a === "closeBadges") {
     let seen;
     try { seen = JSON.parse(localStorage.getItem("rondje-badges") || "[]"); } catch { seen = []; }
