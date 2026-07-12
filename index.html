@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Rondje! · Villa Escalatopia</title>
 <meta name="theme-color" content="#2A2254" />
+
+<!-- PWA: installeerbaar maken -->
+<link rel="manifest" href="./manifest.json" />
+<link rel="apple-touch-icon" href="./icons/icon-180.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Rondje" />
+
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&family=Bebas+Neue&family=Aleo:wght@400;700&display=swap" rel="stylesheet" />
 <style>
@@ -506,10 +515,7 @@ function initApp(cfg) {
   db = getDatabase(app);
   S.shareUrl = shareUrl(cfg);
 
-  // service worker voor nette meldingen (optioneel; faalt stil als sw.js ontbreekt)
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
-  }
+  // Service worker wordt onderaan de pagina geregistreerd (zie PWA-blok).
 
   let joinsUnsub = null;
   let watchedRoundId = null;
@@ -1058,6 +1064,120 @@ document.addEventListener("keydown", (e) => {
 const cfg = getStoredConfig();
 if (cfg) initApp(cfg);
 else renderSetup();
+</script>
+
+<!-- PWA: service worker + installatiehint.
+     (De app toont zijn eigen versie al via APP_VERSION / "wat is nieuw",
+     dus window.APP_VERSION uit het standaardblok is hier weggelaten.
+     Verhoog bij een deploy CACHE_VERSION bovenin sw.js.) -->
+<script>
+  // --- Service worker registreren ----------------------------------------
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker
+        .register('./sw.js')
+        .then((reg) => {
+          // Zodra er een nieuwe versie klaarstaat: meteen activeren en
+          // de pagina herladen. Zonder dit blijven mensen op een oude
+          // versie hangen (berucht probleem op iOS).
+          reg.addEventListener('updatefound', () => {
+            const nieuwe = reg.installing;
+            if (!nieuwe) return;
+            nieuwe.addEventListener('statechange', () => {
+              if (
+                nieuwe.state === 'installed' &&
+                navigator.serviceWorker.controller
+              ) {
+                nieuwe.postMessage('SKIP_WAITING');
+              }
+            });
+          });
+          // Check bij elke start of er een update is.
+          reg.update();
+        })
+        .catch((err) => console.warn('SW-registratie mislukt:', err));
+
+      let herlaadt = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (herlaadt) return; // voorkomt een oneindige herlaadlus
+        herlaadt = true;
+        window.location.reload();
+      });
+    });
+  }
+
+  // --- Installatiehint ----------------------------------------------------
+  // Android/Chrome geeft een echte installatieprompt. iOS niet: daar moet de
+  // gebruiker zelf Delen -> Zet op beginscherm doen. Deze code regelt beide.
+  (function () {
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.navigator.standalone === true;
+    if (isStandalone) return; // al geïnstalleerd, niks te doen
+
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const alGezien = localStorage.getItem('rondje-installhint') === 'gezien';
+    if (alGezien) return;
+
+    let promptEvent = null;
+
+    function toonBalk(tekst, knopTekst, opKlik) {
+      const balk = document.createElement('div');
+      balk.style.cssText =
+        'position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));' +
+        'z-index:9999;background:#1a1410;color:#fdf6e8;border:1px solid #e8a33d;' +
+        'border-radius:14px;padding:14px 16px;font:14px/1.4 system-ui,sans-serif;' +
+        'display:flex;gap:12px;align-items:center;box-shadow:0 8px 24px rgba(0,0,0,.4)';
+      const span = document.createElement('span');
+      span.style.flex = '1';
+      span.textContent = tekst;
+      balk.appendChild(span);
+
+      if (knopTekst) {
+        const knop = document.createElement('button');
+        knop.textContent = knopTekst;
+        knop.style.cssText =
+          'background:#e8a33d;color:#1a1410;border:0;border-radius:9px;' +
+          'padding:8px 14px;font-weight:600;font-size:14px';
+        knop.onclick = opKlik;
+        balk.appendChild(knop);
+      }
+
+      const sluit = document.createElement('button');
+      sluit.textContent = '✕';
+      sluit.setAttribute('aria-label', 'Sluiten');
+      sluit.style.cssText =
+        'background:none;border:0;color:#8a7a68;font-size:18px;padding:4px 6px';
+      sluit.onclick = () => {
+        localStorage.setItem('rondje-installhint', 'gezien');
+        balk.remove();
+      };
+      balk.appendChild(sluit);
+
+      document.body.appendChild(balk);
+      return balk;
+    }
+
+    // Android / Chrome
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      promptEvent = e;
+      const balk = toonBalk('Zet Rondje op je beginscherm.', 'Installeer', async () => {
+        balk.remove();
+        promptEvent.prompt();
+        await promptEvent.userChoice;
+        localStorage.setItem('rondje-installhint', 'gezien');
+      });
+    });
+
+    // iOS: geen prompt mogelijk, dus uitleggen. Alleen in Safari zelf werkt
+    // "Zet op beginscherm" — niet in een in-app browser van WhatsApp o.i.d.
+    if (isIOS) {
+      setTimeout(() => {
+        toonBalk('Tik op Delen en dan "Zet op beginscherm".', null, null);
+      }, 2500);
+    }
+  })();
 </script>
 </body>
 </html>
